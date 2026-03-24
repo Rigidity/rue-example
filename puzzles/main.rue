@@ -1,0 +1,51 @@
+fn main(
+    // The mod hash is the tree hash of the puzzle, without anything curried into it.
+    // It's used to curry the puzzle with new arguments, to recreate the coin.
+    MOD_HASH: Bytes32,
+
+    // The public key is used to verify ownership of the coin when spending it.
+    // Normally, this would be handled by another inner puzzle (referred to as a custody p2 puzzle).
+    PUBLIC_KEY: PublicKey,
+
+    // The current value is curried into the coin, and it can be changed by spending the coin and recreating it.
+    // We don't use this value in the puzzle since it's a simple example.
+    _CURRENT_VALUE: Any,
+
+    // Lowercase values are part of the solution, and must be secured by the puzzle somehow.
+    // In this case, we verify a signature where the message is the hash of the value.
+    new_value: Any,
+
+    // The amount of the current coin, which will be verified by a condition.
+    my_amount: Int,
+) -> List<Condition> {
+    let new_inner_puzzle_hash = recreate_self(MOD_HASH, PUBLIC_KEY, new_value);
+
+    [
+        // Most importantly, verify that the owner signed off on this exact spend.
+        // The amount doesn't need to be signed since it's verified by another condition.
+        AggSigMe {
+            public_key: PUBLIC_KEY,
+            message: tree_hash(new_value),
+        },
+
+        // Ensure that the amount of the child coin is the same as the parent.
+        AssertMyAmount {
+            amount: my_amount,
+        },
+
+        // Recreate the singleton.
+        // Note that the singleton layer will automatically wrap the odd child in the singleton puzzle.
+        CreateCoin {
+            puzzle_hash: new_inner_puzzle_hash,
+            amount: my_amount,
+        },
+    ]
+}
+
+fn recreate_self(mod_hash: Bytes32, public_key: PublicKey, current_value: Any) -> Bytes32 {
+    curry_tree_hash(mod_hash, [
+        tree_hash_atom(mod_hash),
+        tree_hash_atom(public_key as Bytes),
+        tree_hash(current_value),
+    ])
+}
